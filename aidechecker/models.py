@@ -8,8 +8,7 @@ class AideScanResult(models.Model):
     files_added = models.IntegerField(default=0)
     files_removed = models.IntegerField(default=0)
     files_affected = models.IntegerField(default=0)
-    output = models.TextField()
-    report_file = models.CharField(max_length=255)
+    output = models.TextField()  
 
     def __str__(self):
         return f"AIDE Scan - {self.run_time.strftime('%Y-%m-%d %H:%M:%S')}"
