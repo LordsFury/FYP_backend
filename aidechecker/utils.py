@@ -505,3 +505,24 @@ def save_report_as_pdf(filepath, lines):
     doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
 
     return filepath
+
+
+
+def extract_rules(config_path):
+    rules = []
+    # valid rule tokens: letters/numbers, usually short like p,i,n,sha256,sha512
+    rule_pattern = re.compile(r"^([A-Za-z0-9_]+)\s*=\s*([A-Za-z0-9\+]+)$")
+
+    with open(config_path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+
+            match = rule_pattern.match(line)
+            if match:
+                rhs = match.group(2)
+                if "+" in rhs:
+                    rules.append(match.group(1))
+
+    return sorted(set(rules))

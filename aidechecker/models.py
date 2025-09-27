@@ -1,5 +1,6 @@
 from django.db import models
 from datetime import date
+from django.utils import timezone
 
 class AideScanResult(models.Model):
     status = models.CharField(default="", max_length=20)
@@ -12,3 +13,14 @@ class AideScanResult(models.Model):
 
     def __str__(self):
         return f"AIDE Scan - {self.run_time.strftime('%Y-%m-%d %H:%M:%S')}"
+
+
+class Alert(models.Model):
+    timestamp = models.DateTimeField(default=timezone.now)
+    host = models.CharField(max_length=100)
+    summary = models.TextField()
+    pdf_report = models.FileField(upload_to="aide_reports/", null=True, blank=True)
+    is_read = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"Alert on {self.host} at {self.timestamp}"

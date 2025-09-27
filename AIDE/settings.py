@@ -35,7 +35,7 @@ DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '192.168.41.128', '192.168.41.133']
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '192.168.41.131']
 
 
 # Application definition

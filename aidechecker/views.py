@@ -1,12 +1,13 @@
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from .models import AideScanResult
+from .models import AideScanResult, Alert
 from django.conf import settings
 from datetime import datetime
 import pytz
 import subprocess
 import re
 import os
+import shutil
 from django.http import FileResponse, Http404
 from rest_framework.permissions import IsAdminUser
 from rest_framework.decorators import api_view, permission_classes
@@ -14,14 +15,15 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from io import BytesIO
 import json
-from .utils import save_report_as_pdf, format_aide_data, convert_aide_timestamps
-
+from .utils import save_report_as_pdf, format_aide_data, convert_aide_timestamps, extract_rules
 
 local_timezone = pytz.timezone("Asia/Karachi")
 
-CONFIG_PATH = "/home/Abdullah/backend_env_311_linux/aide.conf.copy"
+CONFIG_PATH = "/home/Abdullah/backend_env_311/aide.conf.copy"
 
 REAL_CONFIG_PATH = "/etc/aide.conf"
+
+SYNC_SCRIPT = "/usr/local/bin/update_aide_conf.sh"
 
 
 @csrf_exempt
@@ -36,7 +38,7 @@ def run_check(request):
                 stderr=subprocess.PIPE,
                 universal_newlines=True
             )
-
+            
             lines = result.stdout.splitlines()
             capture = False
             filtered_lines = []
@@ -166,6 +168,7 @@ def accept_changes(request):
     return JsonResponse({"success": "error", "output": "Only POST allowed"}, status=405)
 
 
+
 @api_view(["GET"])
 @permission_classes([IsAdminUser])
 def get_last_scan(request):
@@ -242,46 +245,139 @@ def delete_all_data(request):
 @permission_classes([IsAdminUser])
 def get_config(request):
     if request.method == "GET":
+        dirs = []
         try:
             if not os.path.exists(CONFIG_PATH):
                 return JsonResponse(
                     {"success": False, "msg": f"Config file not found at {CONFIG_PATH}"},
                     status=404,
                 )
+
             with open(CONFIG_PATH, "r") as f:
-                content = f.read()
-            return JsonResponse({"success": True, "data": content})
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+
+                    match = re.match(r"^(/[\w\/\.\-\*\$]+)\s+(.+)$", line)
+                    if match:
+                        dirs.append({
+                            "path": match.group(1),
+                            "rule": match.group(2)
+                        })
+
+            rules = extract_rules(CONFIG_PATH)
+
+            return JsonResponse({"success": True, "directories": dirs, "rules": rules})
+
         except Exception as e:
             return JsonResponse({"success": False, "msg": str(e)}, status=500)
 
+
     elif request.method == "POST":
         try:
-            body = json.loads(request.body.decode("utf-8"))
-            new_config = body.get("config")
-            if not new_config:
-                return JsonResponse({"success": False, "msg": "No config data provided"}, status=400)
+            data = json.loads(request.body.decode("utf-8"))
+            directories = data.get("directories", [])
+
+            if not isinstance(directories, list):
+                return JsonResponse({"success": False, "msg": "Invalid data format"}, status=400)
+
+            valid_directories = []
+            seen = set()
+
+            for d in directories:
+                path = d.get("path", "").strip()
+                rule = d.get("rule", "").strip()
+
+                if not path.startswith("/"):
+                    return JsonResponse({"success": False, "msg": f"Invalid path (must start with /): {path}"}, status=400)
+
+                if not re.match(r"^[/\w\.\-\*\$]+$", path):
+                    return JsonResponse({"success": False, "msg": f"Invalid characters in path: {path}"}, status=400)
+
+                # allow non-existent system dirs only if using * or $ 
+                if "*" not in path and "$" not in path and not os.path.exists(path):
+                    return JsonResponse({"success": False, "msg": f"Path does not exist: {path}"}, status=400)
+
+                if (path, rule) in seen:
+                    return JsonResponse({"success": False, "msg": f"Duplicate entry: {path} with rule {rule}"}, status=400)
+
+                seen.add((path, rule))
+                valid_directories.append({"path": path, "rule": rule})
+
+            # Backup config
+            if os.path.exists(CONFIG_PATH):
+                shutil.copy(CONFIG_PATH, f"{CONFIG_PATH}.bak")
+
+            new_lines = []
+            with open(CONFIG_PATH, "r") as f:
+                for line in f:
+                    stripped = line.strip()
+                    if not stripped or stripped.startswith("#"):
+                        # keep comments and empty lines
+                        new_lines.append(line)
+                        continue
+                    if re.match(r"^(/[\w\/\.\-\*\$]+)\s+.+$", stripped):
+                        # skip old directory entries completely
+                        continue
+                    if re.match(r"^/[\w\/\.\-\*\$]+$", stripped):
+                        # also skip lines that are just bare paths with no rule
+                        continue
+                    # keep everything else (like database, ruleset definitions, etc.)
+                    new_lines.append(line)
+
+            # now add updated directories (always path + rule)
+            for d in valid_directories:
+                new_lines.append(f"{d['path']} {d['rule']}\n")
+
 
             with open(CONFIG_PATH, "w") as f:
-                f.write(new_config)
+                f.writelines(new_lines)
 
+            # Sync with real config
             try:
-                subprocess.run(
-                    ["sudo", "cp", CONFIG_PATH, REAL_CONFIG_PATH],
-                    check=True
-                )
+                subprocess.run(["sudo", SYNC_SCRIPT], check=True)
             except subprocess.CalledProcessError as e:
-                return JsonResponse({
-                    "success": False,
-                    "msg": f"Config updated locally but failed to apply to system: {e.stderr if e.stderr else str(e)}"
-                }, status=500)
+                return JsonResponse({"success": False, "msg": f"Failed to sync real config: {e}"}, status=500)
 
-            return JsonResponse({"success": True, "msg": "Config updated successfully!"})
+            return JsonResponse({"success": True, "msg": "Config updated successfully"})
 
         except Exception as e:
-            return JsonResponse({"success": False, "msg": f"Error saving config: {str(e)}"}, status=500)
+            return JsonResponse({"success": False, "msg": str(e)}, status=500)
+
+
 
     return JsonResponse({"success": False, "msg": "Only GET/POST allowed"}, status=405)
 
-    return JsonResponse(
-        {"success": False, "error": "Only GET/POST allowed"}, status=405
-    )
+
+
+def browse_directories(request):
+    path = request.GET.get("path", "/")  
+    try:
+        if not os.path.isdir(path):
+            return JsonResponse({"success": False, "msg": "Invalid path"}, status=400)
+
+        dirs = []
+        for entry in os.scandir(path):
+            if entry.is_dir():
+                dirs.append(entry.path)
+
+        return JsonResponse({"success": True, "directories": dirs})
+    except Exception as e:
+        return JsonResponse({"success": False, "msg": str(e)}, status=500)
+
+
+@api_view(["GET"])
+def get_alerts(request):
+    alerts = Alert.objects.order_by("-timestamp")
+    return JsonResponse([
+        {
+            "id": a.id,
+            "timestamp": a.timestamp.strftime("%d-%m-%Y %H:%M:%S"),
+            "host": a.host,
+            "summary": a.summary,
+            "pdf_url": a.pdf_report.url if a.pdf_report else None,
+            "is_read": a.is_read,
+        }
+        for a in alerts
+    ])
