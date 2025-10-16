@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Python bytecode and cache
 __pycache__/
 *.py[cod]
@@ -47,3 +48,34 @@ dist/
 # Migrations cache (optional – only ignore if you don’t want migrations tracked)
 # */migrations/__pycache__/
                                                                                                  
+=======
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+
+# Virtual environment
+env/
+venv/
+.venv/
+
+# Logs
+*.log
+
+# Django stuff
+media/
+staticfiles/
+
+# Secrets
+.env
+settings_local.py
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+reports/
+>>>>>>> 089a58f9b2f0f2ace5af598dfd635424b94365f2
