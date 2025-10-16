@@ -1,0 +1,49 @@
+# Python bytecode and cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Django specific
+*.log
+*.pot
+*.pyc
+*.pyo
+*.mo
+db.sqlite3
+media/
+staticfiles/
+local_settings.py
+
+# Environment variables
+.env
+.env.*
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Backup or temporary files
+*.bak
+*.old
+*.orig
+
+# Node / frontend (if you have React or Vue frontend in same repo)
+node_modules/
+build/
+dist/
+
+# Migrations cache (optional – only ignore if you don’t want migrations tracked)
+# */migrations/__pycache__/
+                                                                                                 
