@@ -23,6 +23,8 @@ REAL_CONFIG_PATH = "/etc/aide.conf"
 
 SYNC_SCRIPT = "/usr/local/bin/update_aide_conf.sh"
 
+TIMER_FILE = "/etc/systemd/system/aide-auto-check.timer"
+
 
 @csrf_exempt
 @api_view(["GET"])
@@ -480,3 +482,78 @@ def recent_activity(request):
 
     except Exception as e:
         return JsonResponse({"success": False, "msg": str(e)}, status=500)
+
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAdminUser])
+def aide_auto_check(request):
+    if request.method == "GET":
+        try:
+            with open(TIMER_FILE, "r") as f:
+                lines = f.readlines()
+
+            schedule = ""
+            for line in lines:
+                if line.strip().startswith("OnCalendar="):
+                    schedule = line.strip().split("=", 1)[1]
+                    break
+
+            return JsonResponse({"success": True, "schedule": schedule})
+        except Exception as e:
+            return JsonResponse({"success": False, "msg": str(e)}, status=500)
+
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body.decode('utf-8'))
+            schedule = data.get("schedule")
+            if not schedule:
+                return JsonResponse({"success": False, "msg": "Missing 'schedule' field"}, status=400)
+
+            valid_presets = ["daily", "weekly", "monthly"]
+            if schedule.lower() in valid_presets:
+                schedule_map = {
+                    "daily": "daily",
+                    "weekly": "weekly",
+                    "monthly": "monthly",
+                }
+                schedule = schedule_map[schedule.lower()]
+            else:
+                # Validate custom systemd format like "*-*-* 14:30:00"
+                pattern = re.compile(
+                    r"^(\*|\d{4})-(\*|0[1-9]|1[0-2])-(\*|0[1-9]|[12]\d|3[01])\s([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$"
+                )
+                if not pattern.match(schedule):
+                    return JsonResponse({
+                        "success": False,
+                        "msg": "Invalid schedule format. Example: '*-*-* 14:30:00' for daily 2:30 PM."
+                    }, status=400)
+            
+            with open(TIMER_FILE, "r") as f:
+                lines = f.readlines()
+
+            new_lines = []
+            found = False
+            for line in lines:
+                if line.strip().startswith("OnCalendar="):
+                    new_lines.append(f"OnCalendar={schedule}\n")
+                    found = True
+                else:
+                    new_lines.append(line)
+            if not found:
+                new_lines.append(f"OnCalendar={schedule}\n")
+
+            content = "".join(new_lines)
+            subprocess.run(["sudo", "tee", TIMER_FILE], input=content.encode(), check=True)
+
+            subprocess.run(["sudo", "systemctl", "daemon-reload"], check=True)
+            subprocess.run(["sudo", "systemctl", "restart", "aide-auto-check.timer"], check=True)
+
+            return JsonResponse({"success": True, "msg": f"Timer updated to '{schedule}' successfully."})
+
+        except subprocess.CalledProcessError as e:
+            return JsonResponse({"success": False, "msg": f"System command failed: {e}"}, status=500)
+        except Exception as e:
+            return JsonResponse({"success": False, "msg": str(e)}, status=500)
+
+            

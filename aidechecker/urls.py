@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import run_check, download_report, view_report, accept_changes, get_last_scan, get_all_data, delete_data, delete_all_data, get_config, browse_directories, get_alerts, delete_alert, delete_all_alerts, marked_as_read, system_overview, recent_activity 
+from .views import run_check, download_report, view_report, accept_changes, get_last_scan, get_all_data, delete_data, delete_all_data, get_config, browse_directories, get_alerts, delete_alert, delete_all_alerts, marked_as_read, system_overview, recent_activity, aide_auto_check 
 
 urlpatterns = [
     path('api/run-check/', run_check, name='run_check'),
@@ -18,4 +18,5 @@ urlpatterns = [
     path('api/alerts/mark-read/', marked_as_read, name='marked_as_read'),
     path('api/system-overview/', system_overview, name='system_overview'),
     path('api/recent-activity/', recent_activity, name='recent_activity'),
+    path('api/auto-check/', aide_auto_check, name='aide_auto_check'),
 ]
